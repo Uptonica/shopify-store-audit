@@ -1,0 +1,15 @@
+{
+  "name": "uptonica",
+  "description": "Free Claude Code skills by Uptonica.",
+  "owner": {
+    "name": "Uptonica",
+    "url": "https://uptonica.com"
+  },
+  "plugins": [
+    {
+      "name": "shopify-audit",
+      "source": "./",
+      "description": "Audit a Shopify store from its public pages and get a prioritised fix list with evidence."
+    }
+  ]
+}
