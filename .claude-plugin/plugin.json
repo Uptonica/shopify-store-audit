@@ -1,6 +1,6 @@
 {
   "name": "shopify-audit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Audit a Shopify store from its public pages: product data that Google and AI assistants read, photos, descriptions, languages, AI crawler access, chat and installed apps. Read-only.",
   "author": {
     "name": "Uptonica",
@@ -8,5 +8,12 @@
   },
   "homepage": "https://github.com/uptonica/shopify-store-audit",
   "license": "MIT",
-  "keywords": ["shopify", "seo", "ecommerce", "audit", "structured-data", "ai-search"]
+  "keywords": [
+    "shopify",
+    "seo",
+    "ecommerce",
+    "audit",
+    "structured-data",
+    "ai-search"
+  ]
 }

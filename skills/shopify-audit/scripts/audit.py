@@ -10,6 +10,7 @@ public pages at a polite pace (one request every 1.5 seconds or slower) and neve
 in, posts or changes anything.
 """
 import argparse
+import csv
 import html
 import ipaddress
 import json
@@ -400,15 +401,95 @@ def audit(url, max_products, samples):
             'tools': found, 'catalog': catalog, 'requests': f.count, 'audited_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
 
 
+def csv_checks(path):
+    """Exact checks from the product export (Shopify admin > Products > Export, CSV for Excel or plain CSV).
+
+    The export has one row per variant and per image; rows of the same product
+    share the Handle, and only the first row carries the product fields.
+    """
+    products = {}
+    # descriptions built with page builders can exceed csv's 128 KB default; stay bounded
+    csv.field_size_limit(16 * 1024 * 1024)
+    with open(path, newline='', encoding='utf-8-sig') as fh:
+        for row in csv.DictReader(fh):
+            handle = (row.get('Handle') or '').strip()
+            if not handle:
+                continue
+            p = products.setdefault(handle, {'images': {}, 'variants': 0, 'barcodes': 0, 'skus': 0})
+            for field in ('Title', 'Body (HTML)', 'Vendor', 'SEO Title', 'SEO Description', 'Status', 'Published'):
+                if row.get(field) and field not in p:
+                    p[field] = row[field]
+            src = (row.get('Image Src') or '').strip()
+            if src:
+                p['images'][src] = (row.get('Image Alt Text') or '').strip()
+            if (row.get('Variant Price') or '').strip() or (row.get('Option1 Value') or '').strip():
+                p['variants'] += 1
+                p['barcodes'] += bool((row.get('Variant Barcode') or '').strip())
+                p['skus'] += bool((row.get('Variant SKU') or '').strip())
+    live = {h: p for h, p in products.items()
+            if (p.get('Status') or 'active').lower() == 'active' and (p.get('Published') or 'true').lower() != 'false'}
+    if not live:
+        return [check('csv', 'products', 'unmeasured', 'The product export has no active products (check the file is the Shopify product export)')], {}
+    n = len(live)
+
+    def row(cid, area, title, bad, warn_at=10, fail_at=30, note=None):
+        pct = round(100 * len(bad) / n)
+        c = check(cid, area, 'pass' if pct <= warn_at else ('warn' if pct <= fail_at else 'fail'), title,
+                  f'{len(bad)} of {n} ({pct}%)', bad[:5])
+        if note:
+            c['note'] = note
+        return c
+
+    imgs = [(h, alt) for h, p in live.items() for alt in p['images'].values()]
+    no_alt = [h for h, alt in imgs if not alt]
+    alt_pct = round(100 * len(no_alt) / len(imgs)) if imgs else 0
+    seo_title = [h for h, p in live.items() if not (p.get('SEO Title') or '').strip()]
+    seo_desc = [h for h, p in live.items() if not (p.get('SEO Description') or '').strip()]
+    long_title = [h for h, p in live.items() if len((p.get('SEO Title') or p.get('Title') or '').strip()) > 70]
+    no_gtin = [h for h, p in live.items() if p['variants'] and p['barcodes'] == 0]
+    no_vendor = [h for h, p in live.items() if not (p.get('Vendor') or '').strip()]
+    short = [h for h, p in live.items() if words(p.get('Body (HTML)')) < 30]
+    one_photo = [h for h, p in live.items() if len(p['images']) <= 1]
+    checks = [
+        check('csv_alt_text', 'search', 'pass' if alt_pct <= 10 else ('warn' if alt_pct <= 40 else 'fail'),
+              'Product photos without alternative text (read by Google Images and screen readers)',
+              f'{len(no_alt)} of {len(imgs)} photos ({alt_pct}%)', sorted(set(no_alt))[:5]),
+        row('csv_seo_title', 'search', 'Products with no SEO title of their own (Shopify falls back to the product title)', seo_title, 30, 70),
+        row('csv_seo_description', 'search', 'Products with no SEO description (Google picks a snippet itself)', seo_desc, 20, 50),
+        row('csv_long_title', 'search', 'Products whose title in search results runs past 70 characters', long_title, 10, 30),
+        row('csv_gtin', 'ai', 'Products with no barcode (GTIN) on any variant, used by Google Shopping and AI assistants to match products', no_gtin, 10, 50),
+        row('csv_vendor', 'ai', 'Products with no brand (Vendor)', no_vendor, 5, 20),
+        row('csv_descriptions', 'products', 'Products whose description has fewer than 30 words', short, 10, 30,
+            'Exact: counted on the full description in the export.'),
+        row('csv_photos', 'products', 'Products with only one photo (or none)', one_photo, 10, 30),
+    ]
+    return checks, {'products_in_export': len(products), 'active_products': n}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('url')
     ap.add_argument('--max-products', type=int, default=1000)
     ap.add_argument('--samples', type=int, default=5)
+    ap.add_argument('--products-csv', help='Product export from the Shopify admin (Products > Export): exact checks on every product')
     a = ap.parse_args()
     if a.samples < 1 or a.max_products < 1:
         ap.error('--samples and --max-products must be at least 1')
-    json.dump(audit(a.url, a.max_products, a.samples), sys.stdout, ensure_ascii=False, indent=1)
+    result = audit(a.url, a.max_products, a.samples)
+    if a.products_csv and 'checks' in result:
+        try:
+            extra, info = csv_checks(a.products_csv)
+        except (OSError, csv.Error, UnicodeDecodeError) as e:
+            extra, info = [check('csv', 'products', 'unmeasured', f'The product export could not be read: {e}')], {}
+        # the export is exact: it replaces the estimates read from the public feed
+        replaced = {'photos': 'csv_photos', 'descriptions': 'csv_descriptions', 'alt_text': 'csv_alt_text'}
+        have = {c['id'] for c in extra}
+        result['checks'] = [c for c in result['checks'] if replaced.get(c['id']) not in have] + extra
+        order = {'fail': 0, 'warn': 1, 'unmeasured': 2, 'pass': 3}
+        result['checks'].sort(key=lambda c: order[c['status']])
+        result['summary'] = {k: sum(1 for c in result['checks'] if c['status'] == k) for k in order}
+        result['export'] = info
+    json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
     print()
 
 

@@ -21,6 +21,10 @@ Then ask:
 Audit my Shopify store: https://www.example.com
 ```
 
+```
+Audit my Shopify store with this product export: https://www.example.com products_export.csv
+```
+
 ## What it checks
 
 | Area | Checks |
@@ -31,6 +35,7 @@ Audit my Shopify store: https://www.example.com
 | Markets | Which languages the store declares. |
 | Customers | Whether shoppers can reach you by chat or WhatsApp from the home page. |
 | Apps | Email, reviews, loyalty, search, upsell and support apps found on the home page. |
+| Product export (optional) | With the product export from your Shopify admin: photo alt text, SEO titles and descriptions, barcodes and brand on every product, counted exactly. |
 
 ## What you get
 
@@ -45,8 +50,9 @@ Every number comes from your store's pages. Nothing is estimated.
 
 ## Limits
 
-- Many stores limit automated visits to product pages. When that happens,
-  Claude opens two or three product pages itself and says which ones.
+- Shopify limits automated visits to product pages. When the script cannot
+  read them, Claude tries two or three itself, says which, and points you to
+  Google's Rich Results Test. The product export covers the rest exactly.
 - Languages are read from what the store declares; whether each page is really
   translated is not measured.
 - Apps loaded after the cookie banner, or only on other pages, may not appear.
@@ -54,7 +60,7 @@ Every number comes from your store's pages. Nothing is estimated.
 ## Run it without Claude
 
 ```
-python3 skills/shopify-audit/scripts/audit.py https://www.example.com
+python3 skills/shopify-audit/scripts/audit.py https://www.example.com --products-csv products_export.csv
 ```
 
 Python 3.9 or later, standard library only. The output is JSON.
@@ -64,5 +70,8 @@ Python 3.9 or later, standard library only. The output is JSON.
 [Uptonica](https://uptonica.com/?utm_source=github&utm_medium=referral&utm_campaign=shopify-audit-skill)
 writes product descriptions and translations with AI and sends them back to
 Shopify. [See your store analysed by Uptonica, free](https://app.uptonica.com/audit?utm_source=github&utm_medium=referral&utm_campaign=shopify-audit-skill).
+
+Working on stores for clients? With the [Uptonica partner program](https://uptonica.com/partner?utm_source=github&utm_medium=referral&utm_campaign=shopify-audit-skill),
+the platform does the heavy lifting on the brands you manage.
 
 MIT License.
